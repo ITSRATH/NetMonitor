@@ -1,0 +1,13 @@
+# Release output
+dist/
+
+# Local data when NETMONITOR_HOME points into the repository
+Verlauf/
+settings.txt
+
+# Editor / OS
+.vs/
+.vscode/
+*.user
+Thumbs.db
+desktop.ini
