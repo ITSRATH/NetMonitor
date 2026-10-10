@@ -1056,8 +1056,8 @@ namespace NetMonitor
             Theme.StyleGrid(grid);
             grid.MultiSelect = true;
             var cols = L.En
-                ? new[] { "Date", "Provider", "Download", "Upload", "Ping", "Loaded", "% of plan", "Link" }
-                : new[] { "Datum", "Anbieter", "Download", "Upload", "Ping", "Unter Last", "% Tarif", "Verbindung" };
+                ? new[] { "Date", "Provider", "Download\nMbit/s", "Upload\nMbit/s", "Ping", "Loaded", "% of plan", "Connection" }
+                : new[] { "Datum", "Anbieter", "Download\nMbit/s", "Upload\nMbit/s", "Ping", "Unter Last", "% Tarif", "Verbindung" };
             foreach (var c in cols) grid.Columns.Add(c, c);
             grid.Columns[0].FillWeight = 120;
             grid.Columns[1].FillWeight = 110;
@@ -1625,7 +1625,7 @@ namespace NetMonitor
             {
                 var r = results[i];
                 double pct = tariffDown > 0 && !double.IsNaN(r.Down) ? 100 * r.Down / tariffDown : double.NaN;
-                int row = grid.Rows.Add(r.Time.ToString(L.DateTimeShort), r.Provider, SpeedHistory.Fmt(r.Down) + " Mbit/s", SpeedHistory.Fmt(r.Up) + " Mbit/s",
+                int row = grid.Rows.Add(r.Time.ToString(L.DateTimeShort), r.Provider, SpeedHistory.Fmt(r.Down), SpeedHistory.Fmt(r.Up),
                     SpeedHistory.FmtMs(r.Ping), SpeedHistory.FmtMs(r.LoadedPing), double.IsNaN(pct) ? "–" : pct.ToString("0") + " %", r.ConnText);
                 grid.Rows[row].Cells[7].Style.ForeColor = r.Conn == "LAN" ? Theme.Good : r.Conn == "" || r.Conn == "?" ? Theme.Faint : Theme.Warn;
                 grid.Rows[row].Tag = r;
