@@ -375,7 +375,7 @@ namespace NetMonitor
         // Störungen einer Sitzung; Ziele, die (fast) nie erreichbar waren, zählen nicht als Störung.
         public static List<LossIncident> ForSession(HistoryEntry e)
         {
-            long len = e.SamplesLength;
+            long len = e.SamplesLength + 1000000000L * SpeedStore.Windows().Count; // neue Speedtests machen den Cache ungültig
             lock (sync)
             {
                 Tuple<long, List<LossIncident>> hit;
@@ -391,10 +391,17 @@ namespace NetMonitor
         {
             int n = e.Names.Length;
             var lost = new List<KeyValuePair<DateTime, int>>();
+            var speedtests = SpeedStore.Windows(); // Verluste während eines Speedtests sind keine Störung
             for (int i = 0; i < n && i < samples.Length; i++)
             {
                 if (e.Stats[i].Sent == 0 || e.Stats[i].LossPct > 95) continue;
-                foreach (var s in samples[i]) if (!s.Ok) lost.Add(new KeyValuePair<DateTime, int>(s.Time, i));
+                foreach (var s in samples[i])
+                {
+                    if (s.Ok) continue;
+                    bool duringTest = false;
+                    foreach (var w in speedtests) if (s.Time >= w.Key && s.Time <= w.Value) { duringTest = true; break; }
+                    if (!duringTest) lost.Add(new KeyValuePair<DateTime, int>(s.Time, i));
+                }
             }
             lost.Sort((a, b) => a.Key.CompareTo(b.Key));
             var gap = TimeSpan.FromMilliseconds(Math.Max(3 * e.Interval, 5000));
@@ -637,6 +644,118 @@ namespace NetMonitor
             result.Sort((a, b) => b.Score.CompareTo(a.Score));
             if (result.Count > 6) result.RemoveRange(6, result.Count - 6);
             return result;
+        }
+    }
+
+    // Art der aktuellen Internetverbindung (LAN / WLAN / Mobilfunk / VPN).
+    public class ConnInfo
+    {
+        public string Kind = "?";      // LAN, WLAN, MOBILE, VPN, ?
+        public string Adapter = "", Ssid = "", Band = "";
+        public int Signal = -1;        // WLAN-Signal in %
+        public long LinkMbps;          // ausgehandelte Link-Geschwindigkeit
+
+        public bool IsLan { get { return Kind == "LAN"; } }
+
+        public string Short
+        {
+            get
+            {
+                switch (Kind)
+                {
+                    case "LAN": return "LAN" + (LinkMbps > 0 ? " · " + FormatLink(LinkMbps) : "");
+                    case "WLAN": return L.P("WLAN", "Wi-Fi") + (Signal >= 0 ? " · " + Signal + " %" : "");
+                    case "MOBILE": return L.P("Mobilfunk", "Mobile");
+                    case "VPN": return "VPN";
+                    default: return L.P("Verbindung unbekannt", "Connection unknown");
+                }
+            }
+        }
+
+        public static string FormatLink(long mbps) { return mbps >= 1000 ? (mbps / 1000.0).ToString("0.#") + " Gbit/s" : mbps + " Mbit/s"; }
+    }
+
+    static class NetInfo
+    {
+        static ConnInfo cached;
+        static DateTime cachedAt;
+
+        static bool LooksVirtual(NetworkInterface nic)
+        {
+            string d = (nic.Description + " " + nic.Name).ToLowerInvariant();
+            foreach (var w in new[] { "virtual", "vpn", "tap-", "tun", "wireguard", "hyper-v", "vmware", "virtualbox", "tailscale", "zerotier", "openvpn", "wintun", "loopback" })
+                if (d.Contains(w)) return true;
+            return nic.NetworkInterfaceType == NetworkInterfaceType.Tunnel || nic.NetworkInterfaceType == NetworkInterfaceType.Ppp;
+        }
+
+        static bool HasGateway(NetworkInterface nic)
+        {
+            foreach (var gw in nic.GetIPProperties().GatewayAddresses)
+                if (gw.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && !gw.Address.Equals(IPAddress.Any)) return true;
+            return false;
+        }
+
+        // Ermittelt die Verbindung über den Adapter mit Standardgateway (zwischengespeichert für 15 s).
+        public static ConnInfo Current()
+        {
+            if (cached != null && (DateTime.Now - cachedAt).TotalSeconds < 15) return cached;
+            var info = new ConnInfo();
+            try
+            {
+                NetworkInterface physical = null, any = null;
+                foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (nic.OperationalStatus != OperationalStatus.Up || nic.NetworkInterfaceType == NetworkInterfaceType.Loopback || !HasGateway(nic)) continue;
+                    if (any == null) any = nic;
+                    if (physical == null && !LooksVirtual(nic)) physical = nic;
+                }
+                var chosen = physical ?? any;
+                if (chosen != null)
+                {
+                    info.Adapter = chosen.Description;
+                    info.LinkMbps = chosen.Speed > 0 ? chosen.Speed / 1000000 : 0;
+                    switch (chosen.NetworkInterfaceType)
+                    {
+                        case NetworkInterfaceType.Wireless80211: info.Kind = "WLAN"; break;
+                        case NetworkInterfaceType.Wwanpp:
+                        case NetworkInterfaceType.Wwanpp2: info.Kind = "MOBILE"; break;
+                        default: info.Kind = physical == null ? "VPN" : "LAN"; break;
+                    }
+                    if (info.Kind == "WLAN") ReadWifi(info);
+                }
+            }
+            catch { }
+            cached = info;
+            cachedAt = DateTime.Now;
+            return info;
+        }
+
+        // SSID, Signal und Band aus „netsh wlan show interfaces“ (deutsche und englische Ausgabe).
+        static void ReadWifi(ConnInfo info)
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("netsh", "wlan show interfaces")
+                {
+                    UseShellExecute = false, RedirectStandardOutput = true, CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.OEMCodePage)
+                };
+                using (var p = System.Diagnostics.Process.Start(psi))
+                {
+                    string output = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(3000);
+                    foreach (var raw in output.Split('\n'))
+                    {
+                        var m = System.Text.RegularExpressions.Regex.Match(raw, @"^\s{4}(\S[^:]*?)\s*:\s(.*)$");
+                        if (!m.Success) continue;
+                        string key = m.Groups[1].Value.Trim(), value = m.Groups[2].Value.Trim();
+                        if (key == "SSID" && info.Ssid.Length == 0) info.Ssid = value;
+                        else if (key == "Signal") { int s; if (int.TryParse(value.TrimEnd('%', ' '), out s)) info.Signal = s; }
+                        else if (key == "Band" && info.Band.Length == 0) info.Band = value;
+                    }
+                }
+            }
+            catch { }
         }
     }
 
@@ -889,7 +1008,7 @@ namespace NetMonitor
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
 
-        public const string Version = "1.0.0";
+        public const string Version = "1.3.0";
 
         // Pfad zu NetMonitor.ps1 – wird für den Hilfsprozess der Spiel-Erkennung benötigt.
         public static string ScriptPath;
@@ -902,6 +1021,7 @@ namespace NetMonitor
             try { Application.SetCompatibleTextRenderingDefault(false); } catch (InvalidOperationException) { }
             Theme.Init();
             L.Load();
+            PowerThrottling.DisableForSelf(); // genaue Messungen auch, wenn das Fenster im Hintergrund liegt
         }
 
         [STAThread]

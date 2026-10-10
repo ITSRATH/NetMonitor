@@ -23,7 +23,17 @@
   | only the custom / game server | 🩷 Target server only |
 
   Incidents less than 10 minutes apart can be grouped into a *series*.
-- **CSV export** (+ PNG of the chart) for sessions and incident lists.
+- **Speed test (manual)** – choose the provider:
+  - **Cloudflare** (built in) – 6 parallel connections, download/upload, idle and *loaded* latency (bufferbloat), jitter
+  - **Speedtest.net** – via the official [Ookla Speedtest CLI](https://www.speedtest.net/apps/cli), with server selection. The installer (or one click in the app) downloads it from Ookla, verifies its SHA-256 checksum and stores it in `%APPDATA%\NetMonitor\tools\ookla` – by downloading you accept Ookla's terms.
+  - **Official test** – the regulator's own measurement where one exists: Germany (Bundesnetzagentur – Breitbandmessung, legally binding), Austria (RTR-Netztest), Switzerland (networktest.ch), Luxembourg (checkmynet.lu). Preselected from your Windows region; results can be entered for comparison. For other countries Cloudflare or Speedtest.net are fully sufficient.
+
+  NetMonitor shows whether you are connected via **LAN or Wi-Fi** (with signal strength) in the header and in the speed test window, warns that official measurements should be taken via LAN cable, and checks whether the LAN link speed (e.g. 100 Mbit/s port) limits your plan. Each result stores the connection type.
+
+  Implausible results (latency did not rise under load and the speed is far below your plan / previous results) are flagged ⚠ and excluded from the plan evaluation; Speedtest.net automatically repeats such a test against another nearby server.
+
+  Enter your **contracted plan** to see how much of it you actually get (gauges, history chart with plan lines, % of plan). Packet loss during a speed test is marked in the ping chart and not counted as an incident.
+- **CSV export** (+ PNG of the chart) for sessions, incident lists and speed tests.
 - **English / German** – switch live in the header, including number and date formats.
 - **Dark UI**, hand-drawn controls, high-DPI aware.
 
@@ -82,6 +92,7 @@ src\Controls.cs       theme and custom-drawn controls (charts, timeline, buttons
 src\MainForm.cs       dashboard
 src\HistoryForm.cs    history, packet-loss analysis, dialogs
 src\Setup.cs          installer / uninstaller
+src\SpeedTest.cs      speed test (Cloudflare, Ookla CLI, official tests per country) and plan comparison
 src\Strings.cs        German / English
 build\                release script
 ```
@@ -98,6 +109,6 @@ build\                release script
 
 **Installation:** ZIP von der Releases-Seite laden → (empfohlen) Rechtsklick → Eigenschaften → „Zulassen“ → entpacken → **`Setup.cmd`** doppelklicken. Installiert wird ohne Adminrechte für dein Benutzerkonto, inklusive Startmenü-Eintrag und Deinstallation über *Einstellungen → Apps*. Erscheint „Der Computer wurde durch Windows geschützt“: **Weitere Informationen → Trotzdem ausführen**.
 
-**Highlights:** Live-Dashboard mit Sparklines und Paketleiste · Verlauf aller Messungen · Paketverlust-Analyse mit Tagesübersicht, Ursachen-Einschätzung und Serien-Zusammenfassung · automatische Spielserver-Erkennung · CSV-Export · Umschaltung Deutsch/Englisch im Kopfbereich.
+**Highlights:** Live-Dashboard mit Sparklines und Paketleiste · Verlauf aller Messungen · Paketverlust-Analyse mit Tagesübersicht, Ursachen-Einschätzung und Serien-Zusammenfassung · automatische Spielserver-Erkennung · manueller Speedtest (Cloudflare, Speedtest.net, Breitbandmessung) mit Vergleich zum gebuchten Tarif · CSV-Export · Umschaltung Deutsch/Englisch im Kopfbereich.
 
 Die Messdaten liegen unter `%APPDATA%\NetMonitor`.

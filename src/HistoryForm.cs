@@ -324,6 +324,8 @@ namespace NetMonitor
             }
             chart.MinT = e.Start.Ticks;
             chart.MaxT = Math.Max(e.End.Ticks, e.Start.Ticks + TimeSpan.TicksPerSecond * 10);
+            chart.Bands = new List<KeyValuePair<long, long>>();
+            foreach (var w in SpeedStore.Windows()) chart.Bands.Add(new KeyValuePair<long, long>(w.Key.Ticks, w.Value.Ticks));
             chart.IntervalTicks = bucket;
             chart.EmptyText = L.P("Keine Messwerte in dieser Sitzung", "No samples in this session");
             chart.Invalidate();

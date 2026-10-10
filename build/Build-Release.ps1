@@ -6,8 +6,9 @@ $version = [regex]::Match((Get-Content (Join-Path $root 'src\Core.cs') -Raw), 'V
 if (-not $version) { throw 'Version not found in src\Core.cs' }
 
 # Compile check before packaging
-Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-Add-Type -Path (Get-ChildItem (Join-Path $root 'src') -Filter '*.cs').FullName -ReferencedAssemblies System.Windows.Forms, System.Drawing -WarningAction SilentlyContinue
+$refs = 'System.Windows.Forms', 'System.Drawing', 'System.Net.Http', 'System.Web.Extensions', 'System.IO.Compression'
+Add-Type -AssemblyName $refs
+Add-Type -Path (Get-ChildItem (Join-Path $root 'src') -Filter '*.cs').FullName -ReferencedAssemblies $refs -WarningAction SilentlyContinue
 
 $dist = Join-Path $root 'dist'
 $stage = Join-Path $dist "NetMonitor-$version"

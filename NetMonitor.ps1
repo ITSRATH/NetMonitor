@@ -7,7 +7,7 @@
 param([switch]$Setup, [switch]$Uninstall, [string]$CapturePids, [int]$Seconds = 12, [string]$Out)
 
 $ErrorActionPreference = 'Stop'
-$refs = 'System.Windows.Forms', 'System.Drawing'
+$refs = 'System.Windows.Forms', 'System.Drawing', 'System.Net.Http', 'System.Web.Extensions', 'System.IO.Compression'
 Add-Type -AssemblyName $refs
 try {
     $sources = (Get-ChildItem -Path (Join-Path $PSScriptRoot 'src') -Filter '*.cs').FullName

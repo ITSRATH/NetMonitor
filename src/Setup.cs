@@ -53,7 +53,8 @@ namespace NetMonitor
             return string.Equals(Path.GetFullPath(a).TrimEnd('\\'), Path.GetFullPath(b).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
         }
 
-        public static void Install(string source, string target, bool desktop, bool startMenu, Action<int, string> progress)
+        // Liefert eine Warnung (z. B. Ookla-Download fehlgeschlagen) oder null.
+        public static string Install(string source, string target, bool desktop, bool startMenu, bool ookla, Action<int, string> progress)
         {
             if (!File.Exists(Path.Combine(source, "NetMonitor.ps1")) || !Directory.Exists(Path.Combine(source, "src")))
                 throw new FileNotFoundException(L.P("Installationsdateien unvollständig (NetMonitor.ps1 oder src fehlt).",
@@ -106,7 +107,22 @@ namespace NetMonitor
             var settings = Storage.LoadSettings();
             settings["lang"] = L.Code;
             Storage.SaveSettings(settings);
+
+            // Optional: Ookla Speedtest CLI für den Speedtest.net-Test herunterladen (Fehler brechen die Installation nicht ab)
+            string warning = null;
+            if (ookla)
+            {
+                progress(94, L.P("Lade Ookla Speedtest CLI …", "Downloading Ookla Speedtest CLI …"));
+                try { OoklaTest.Download(); }
+                catch (Exception ex)
+                {
+                    warning = L.P("Ookla Speedtest CLI konnte nicht geladen werden (", "Ookla Speedtest CLI could not be downloaded (") +
+                              (ex.InnerException ?? ex).Message + L.P(") – du kannst sie später im Speedtest-Fenster installieren.",
+                                                                       ") – you can install it later in the speed test window.");
+                }
+            }
             progress(100, L.P("Fertig", "Done"));
+            return warning;
         }
 
         static void CreateShortcut(string link, string dir, string ico)
@@ -207,7 +223,7 @@ namespace NetMonitor
     {
         readonly string source;
         string targetDir;
-        bool desktop = true, startMenu = true, launch = true, done, busy;
+        bool desktop = true, startMenu = true, launch = true, ookla = true, done, busy;
         InputBox pathBox;
         Toggle tDesktop, tStart, tLaunch;
         PillButton btnInstall, btnBrowse;
@@ -222,7 +238,7 @@ namespace NetMonitor
             AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(Theme.S(640), Theme.S(560));
+            ClientSize = new Size(Theme.S(640), Theme.S(640));
             Icon = Theme.AppIcon;
             Theme.DarkWindow(this);
             Build();
@@ -293,7 +309,21 @@ namespace NetMonitor
             tStart.Changed += delegate { startMenu = tStart.Checked; };
             tDesktop.Changed += delegate { desktop = tDesktop.Checked; };
             tLaunch.Changed += delegate { launch = tLaunch.Checked; };
-            opts.Controls.AddRange(new Control[] { tStart, tDesktop, tLaunch });
+            var tOokla = new Toggle(L.P("Speedtest.net-Unterstützung (offizielle Ookla CLI, ca. 1 MB)", "Speedtest.net support (official Ookla CLI, approx. 1 MB)"), ookla);
+            tOokla.Changed += delegate { ookla = tOokla.Checked; };
+            var terms = new LinkLabel
+            {
+                Text = L.P("Mit dem Download akzeptierst du Ooklas Nutzungsbedingungen und Datenschutzerklärung.",
+                           "By downloading you accept Ookla's terms of use and privacy policy."),
+                AutoSize = true, Font = Theme.F(8.5f), BackColor = Theme.Bg, LinkColor = Theme.Cyan, ActiveLinkColor = Theme.Text, ForeColor = Theme.Faint,
+                Margin = new Padding(Theme.S(52), 0, 0, 0), UseMnemonic = false
+            };
+            terms.LinkArea = new LinkArea(0, 0);
+            string termsWord = L.P("Nutzungsbedingungen", "terms of use");
+            int at = terms.Text.IndexOf(termsWord, StringComparison.Ordinal);
+            if (at >= 0) terms.LinkArea = new LinkArea(at, termsWord.Length);
+            terms.LinkClicked += delegate { System.Diagnostics.Process.Start(OoklaTest.Terms); };
+            opts.Controls.AddRange(new Control[] { tStart, tDesktop, tLaunch, tOokla, terms });
             root.Controls.Add(opts, 0, 4);
 
             progress = new ProgressLine { Dock = DockStyle.Fill, Margin = new Padding(0, Theme.S(18), 0, Theme.S(6)), Visible = false };
@@ -323,12 +353,14 @@ namespace NetMonitor
             try
             {
                 string dir = targetDir;
-                bool d = desktop, s = startMenu;
-                await Task.Run(() => Installer.Install(source, dir, d, s, report));
+                bool d = desktop, s = startMenu, o = ookla;
+                string warning = await Task.Run(() => Installer.Install(source, dir, d, s, o, report));
                 await Task.Delay(150);
-                status.ForeColor = Theme.Good;
+                status.ForeColor = warning == null ? Theme.Good : Theme.Warn;
+                status.MaximumSize = new Size(Theme.S(580), 0);
                 status.Text = L.P("✓ NetMonitor wurde installiert.", "✓ NetMonitor has been installed.") +
-                    (startMenu ? L.P(" Du findest es im Startmenü.", " You can find it in the Start menu.") : "");
+                    (startMenu ? L.P(" Du findest es im Startmenü.", " You can find it in the Start menu.") : "") +
+                    (warning != null ? "\n" + warning : "");
                 done = true;
                 btnInstall.Text = L.P("Fertig", "Finish");
                 btnInstall.Glyph = Icons.Check;

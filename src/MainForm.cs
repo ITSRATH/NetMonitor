@@ -289,6 +289,7 @@ namespace NetMonitor
         public TimeSpan Runtime;
         public int Incidents;
         public DateTime LastIncident;
+        public ConnInfo Conn;
 
         public Brand()
         {
@@ -308,6 +309,19 @@ namespace NetMonitor
 
             int tx = ls + Theme.S(14);
             Theme.DrawText(g, "NetMonitor", Theme.D(17f), Theme.Text, tx, ly - Theme.S(3));
+            if (Conn != null)
+            {
+                // Verbindungsart: LAN grün, WLAN gelb (für Messungen weniger geeignet), sonst grau
+                string ct = Conn.Short;
+                Color cc = Conn.IsLan ? Theme.Good : Conn.Kind == "WLAN" ? Theme.Warn : Theme.Muted;
+                string glyph = Conn.IsLan ? "" : Conn.Kind == "WLAN" ? "" : Icons.Globe;
+                var cf = Theme.F(8.5f, FontStyle.Bold);
+                int cx = tx + Theme.Measure("NetMonitor", Theme.D(17f)).Width + Theme.S(14);
+                var cr = new Rectangle(cx, ly + Theme.S(2), Theme.Measure(ct, cf).Width + Theme.S(36), Theme.S(22));
+                Theme.FillRound(g, Theme.A(cc, 36), cr, Theme.S(11));
+                Theme.DrawText(g, glyph, Theme.Icon(9f), cc, new Rectangle(cr.X + Theme.S(9), cr.Y, Theme.S(16), cr.Height), TextFormatFlags.VerticalCenter);
+                Theme.DrawText(g, ct, cf, cc, new Rectangle(cr.X + Theme.S(27), cr.Y, cr.Width, cr.Height), TextFormatFlags.VerticalCenter);
+            }
             int y = ly + Theme.S(28);
             var stFont = Theme.F(8.5f, FontStyle.Bold);
             string st = Running ? L.P("Messung läuft", "Measuring") : L.P("Gestoppt", "Stopped");
@@ -347,7 +361,9 @@ namespace NetMonitor
 
         Brand brand;
         DarkSelect selInterval, selTimeout, selWindow;
-        PillButton btnToggle, btnReset, btnHistory, btnExport;
+        PillButton btnToggle, btnReset, btnHistory, btnSpeed, btnExport;
+        SpeedtestForm speedtest;
+        bool bandsDirty = true;
         TimeChart chart;
         Surface chartSurface;
         static readonly byte[] payload = new byte[32];
@@ -407,8 +423,14 @@ namespace NetMonitor
             BuildUi();
 
             timer.Tick += delegate { PingAll(); };
-            clock.Tick += delegate { UpdateBrand(); };
-            refresh.Tick += delegate { if (running || dirty) { dirty = false; UpdateChartRange(); chart.Invalidate(); } };
+            clock.Tick += delegate { UpdateBrand(); if (++connTick % 15 == 0) RefreshConnection(); };
+            RefreshConnection();
+            refresh.Tick += delegate
+            {
+                if (bandsDirty || SpeedState.Active) { bandsDirty = false; UpdateBands(); dirty = true; }
+                if (running || dirty) { dirty = false; UpdateChartRange(); chart.Invalidate(); }
+            };
+            SpeedState.Finished += OnSpeedtestFinished;
             autosave.Tick += delegate { SaveProgress(); };
             clock.Start();
             refresh.Start();
@@ -458,10 +480,10 @@ namespace NetMonitor
         Control BuildHeader()
         {
             var bar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, BackColor = Theme.Bg, Margin = new Padding(Theme.S(6), 0, Theme.S(6), Theme.S(6)) };
-            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Theme.S(600)));
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Theme.S(480)));
             bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            brand = new Brand { Dock = DockStyle.Fill, Margin = new Padding(0), Incidents = liveIncidents, LastIncident = lastIncident };
+            brand = new Brand { Dock = DockStyle.Fill, Margin = new Padding(0), Incidents = liveIncidents, LastIncident = lastIncident, Conn = connection };
             bar.Controls.Add(brand, 0, 0);
 
             var set = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Anchor = AnchorStyles.Right, BackColor = Theme.Bg, Margin = new Padding(0, Theme.S(14), Theme.S(12), 0) };
@@ -482,12 +504,14 @@ namespace NetMonitor
             btnToggle = new PillButton("Start", Theme.Good, false, Icons.Play);
             btnReset = new PillButton(L.P("Zurücksetzen", "Reset"), Theme.Muted, true, Icons.Refresh);
             btnHistory = new PillButton(L.P("Verlauf", "History"), Theme.Violet, true, Icons.History);
+            btnSpeed = new PillButton("Speedtest", Theme.Cyan, true, Icons.Bolt);
             btnExport = new PillButton("Export", Theme.Accent, false, Icons.Download);
             btnToggle.Click += delegate { if (running) StopScan(); else StartScan(); };
             btnReset.Click += delegate { ResetAll(); };
             btnHistory.Click += delegate { ShowHistory(); };
+            btnSpeed.Click += delegate { ShowSpeedtest(); };
             btnExport.Click += delegate { Export(); };
-            buttons.Controls.AddRange(new Control[] { btnToggle, btnReset, btnHistory, btnExport });
+            buttons.Controls.AddRange(new Control[] { btnToggle, btnReset, btnHistory, btnSpeed, btnExport });
             bar.Controls.Add(buttons, 2, 0);
             return bar;
         }
@@ -576,6 +600,8 @@ namespace NetMonitor
             }
             bool historyOpen = history != null && !history.IsDisposed;
             if (historyOpen) history.Close();
+            bool speedOpen = speedtest != null && !speedtest.IsDisposed && !SpeedState.Active;
+            if (speedOpen) speedtest.Close();
             BuildUi();
             for (int i = 0; i < targets.Count; i++)
             {
@@ -590,6 +616,8 @@ namespace NetMonitor
             }
             SaveSettings();
             if (historyOpen) ShowHistory();
+            if (speedOpen) ShowSpeedtest();
+            bandsDirty = true;
         }
 
         // ---------- Einstellungen ----------
@@ -611,7 +639,7 @@ namespace NetMonitor
 
         void SaveSettings()
         {
-            var d = new Dictionary<string, string>();
+            var d = Storage.LoadSettings(); // weitere Einstellungen (Tarif, Speedtest) erhalten
             d["lang"] = L.Code;
             for (int i = 0; i < targets.Count; i++)
             {
@@ -768,7 +796,7 @@ namespace NetMonitor
             if (!running || mySession != session) return;
             t.Add(s);
             if (recorder != null) recorder.Add(targets.IndexOf(t), s);
-            if (!s.Ok && !t.Unreachable)
+            if (!s.Ok && !t.Unreachable && !SpeedState.Disturbs(s.Time))
             {
                 var gap = TimeSpan.FromMilliseconds(Math.Max(3 * IntervalMs, 5000));
                 if (s.Time - lastLoss > gap) { liveIncidents++; lastIncident = s.Time; }
@@ -1031,6 +1059,51 @@ namespace NetMonitor
             }
         }
 
+        // ---------- Verbindungsart ----------
+
+        ConnInfo connection;
+        int connTick;
+
+        async void RefreshConnection()
+        {
+            ConnInfo c;
+            try { c = await Task.Run(() => NetInfo.Current()); } catch { return; }
+            if (IsDisposed) return;
+            connection = c;
+            brand.Conn = c;
+            brand.Invalidate();
+        }
+
+        // ---------- Speedtest ----------
+
+        void ShowSpeedtest()
+        {
+            if (speedtest == null || speedtest.IsDisposed)
+            {
+                speedtest = new SpeedtestForm();
+                speedtest.Show(this);
+            }
+            else
+            {
+                if (speedtest.WindowState == FormWindowState.Minimized) speedtest.WindowState = FormWindowState.Normal;
+                speedtest.Activate();
+            }
+        }
+
+        void OnSpeedtestFinished()
+        {
+            bandsDirty = true;
+            if (history != null && !history.IsDisposed) history.Reload();
+        }
+
+        // Speedtest-Zeiträume im Ping-Diagramm schraffiert markieren.
+        void UpdateBands()
+        {
+            var bands = new List<KeyValuePair<long, long>>();
+            foreach (var w in SpeedStore.Windows()) bands.Add(new KeyValuePair<long, long>(w.Key.Ticks, w.Value.Ticks));
+            chart.Bands = bands;
+        }
+
         // ---------- Export ----------
 
         void Export()
@@ -1064,6 +1137,7 @@ namespace NetMonitor
         {
             StopScan();
             SaveSettings();
+            SpeedState.Finished -= OnSpeedtestFinished;
             timer.Stop();
             clock.Stop();
             refresh.Stop();

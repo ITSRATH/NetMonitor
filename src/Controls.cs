@@ -209,17 +209,18 @@ namespace NetMonitor
 
         public static void DrawText(Graphics g, string text, Font font, Color color, Rectangle r, TextFormatFlags flags)
         {
-            TextRenderer.DrawText(g, text, font, r, color, flags | TextFormatFlags.NoPadding);
+            // NoPrefix: „&“ (z. B. „GmbH & Co.“) nicht als Tastenkürzel-Markierung deuten
+            TextRenderer.DrawText(g, text, font, r, color, flags | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
         }
 
         public static void DrawText(Graphics g, string text, Font font, Color color, int x, int y)
         {
-            TextRenderer.DrawText(g, text, font, new Point(x, y), color, TextFormatFlags.NoPadding);
+            TextRenderer.DrawText(g, text, font, new Point(x, y), color, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
         }
 
         public static Size Measure(string text, Font font)
         {
-            return TextRenderer.MeasureText(text, font, Size.Empty, TextFormatFlags.NoPadding);
+            return TextRenderer.MeasureText(text, font, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
         }
 
         // ---------- Dunkle Fensterrahmen und Bildlaufleisten ----------
@@ -302,7 +303,7 @@ namespace NetMonitor
         public const string Play = "", Stop = "", Refresh = "", History = "",
             Download = "", Delete = "", Folder = "", Sync = "", Warning = "",
             Clock = "", Home = "", Globe = "", Game = "", Search = "",
-            Packet = "", Check = "";
+            Packet = "", Check = "", Bolt = "";
     }
 
     // Abgerundete Fläche mit optionalem Farbakzent oben.
@@ -706,11 +707,22 @@ namespace NetMonitor
     {
         public string Title = "", Value = "–", Sub = "", Glyph = Icons.Packet;
         public Color Tint = Theme.Accent, ValueColor = Theme.Text;
+        public bool Compact;
 
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
             var g = e.Graphics;
+            if (Compact)
+            {
+                int cp = Theme.S(12);
+                using (var b = new SolidBrush(Tint)) g.FillEllipse(b, cp, cp + Theme.S(5), Theme.S(8), Theme.S(8));
+                Theme.DrawText(g, Title, Theme.F(8.5f, FontStyle.Bold), Theme.Muted, new Rectangle(cp + Theme.S(14), cp, Width - cp * 2 - Theme.S(14), Theme.S(18)), TextFormatFlags.EndEllipsis);
+                Theme.DrawText(g, Value, Value.Length > 14 ? Theme.F(10f, FontStyle.Bold) : Theme.D(15f), ValueColor,
+                    new Rectangle(cp, cp + Theme.S(22), Width - cp * 2, Theme.S(28)), TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
+                Theme.DrawText(g, Sub, Theme.F(8f), Theme.Faint, new Rectangle(cp, cp + Theme.S(52), Width - cp * 2, Theme.S(16)), TextFormatFlags.EndEllipsis);
+                return;
+            }
             int p = Theme.S(16), ic = Theme.S(34);
             var circle = new Rectangle(p, p, ic, ic);
             Theme.FillRound(g, Theme.A(Tint, 40), circle, Theme.S(10));
@@ -798,6 +810,8 @@ namespace NetMonitor
         public long IntervalTicks = TimeSpan.TicksPerSecond;
         public string EmptyText = L.P("Noch keine Messdaten – oben auf „Start“ klicken", "No data yet – click “Start” above");
         public string LossTitle = L.P("Paketverlust je Ziel", "Packet loss per target");
+        // Hervorgehobene Zeiträume (z. B. Speedtests), in Ticks
+        public List<KeyValuePair<long, long>> Bands = new List<KeyValuePair<long, long>>();
         Point mouse;
         bool hover;
         readonly List<KeyValuePair<Rectangle, ChartSeries>> legendHits = new List<KeyValuePair<Rectangle, ChartSeries>>();
@@ -942,6 +956,19 @@ namespace NetMonitor
                     Theme.DrawText(g, new DateTime(t).ToString(fmt), Font, Theme.Faint,
                         new Rectangle(x - Theme.S(50), axisY, Theme.S(100), Theme.S(16)), TextFormatFlags.HorizontalCenter);
                 }
+
+            // Speedtest-Zeiträume
+            foreach (var band in Bands)
+            {
+                if (band.Value < MinT || band.Key > MaxT) continue;
+                float x0 = plot.Left + (float)((Math.Max(band.Key, MinT) - MinT) * (double)(cols - 1) / range);
+                float x1 = plot.Left + (float)((Math.Min(band.Value, MaxT) - MinT) * (double)(cols - 1) / range);
+                var r = new RectangleF(x0, plot.Top, Math.Max(Theme.S(3), x1 - x0), plot.Height);
+                using (var b = new HatchBrush(HatchStyle.BackwardDiagonal, Theme.A(Theme.Accent, 60), Theme.A(Theme.Accent, 18)))
+                    g.FillRectangle(b, r);
+                if (r.Width > Theme.S(60))
+                    Theme.DrawText(g, "Speedtest", Theme.F(7.5f, FontStyle.Bold), Theme.Accent, (int)r.X + Theme.S(4), plot.Top + Theme.S(2));
+            }
 
             // Linien mit Farbverlauf
             int gapCols = Math.Max(3, (int)(IntervalTicks * 3.0 * cols / range));
