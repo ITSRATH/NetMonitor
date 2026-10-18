@@ -36,6 +36,12 @@ mkdir -p "$dmgroot"
 cp -R "$app" "$dmgroot/"
 ln -s /Applications "$dmgroot/Applications"
 rm -f "$root/dist/$name.dmg"
-hdiutil create -volname "NetMonitor $version" -srcfolder "$dmgroot" -ov -format UDZO "$root/dist/$name.dmg"
+# hdiutil scheitert auf CI-Runnern gelegentlich mit "Resource busy" – mehrfach versuchen
+for attempt in 1 2 3 4 5; do
+  if hdiutil create -volname "NetMonitor $version" -srcfolder "$dmgroot" -ov -format UDZO "$root/dist/$name.dmg"; then break; fi
+  if [ "$attempt" = 5 ]; then echo "hdiutil failed" >&2; exit 1; fi
+  echo "hdiutil failed (attempt $attempt) – retrying in 10 s"
+  sleep 10
+done
 rm -rf "$work"
 echo "Release package: dist/$name.dmg"

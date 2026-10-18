@@ -26,7 +26,7 @@ class App : Application
                 // Für die Paketierung: Logo als PNG in mehreren Größen (Linux-Icon, macOS-iconset)
                 Directory.CreateDirectory(ExportIconsTo);
                 foreach (int px in new[] { 16, 32, 48, 64, 128, 256, 512, 1024 })
-                    using (var bmp = LogoView.Render(px)) bmp.Save(Path.Combine(ExportIconsTo, "netmonitor-" + px + ".png"));
+                    using (var bmp = LogoView.Render(px)) Png.Save(bmp, Path.Combine(ExportIconsTo, "netmonitor-" + px + ".png"));
                 desktop.Shutdown();
                 return;
             }
@@ -70,7 +70,7 @@ class App : Application
             double s = w.RenderScaling;
             using var bmp = new Avalonia.Media.Imaging.RenderTargetBitmap(new PixelSize((int)(w.Bounds.Width * s), (int)(w.Bounds.Height * s)), new Vector(96 * s, 96 * s));
             bmp.Render(w);
-            bmp.Save(Path.Combine(ScreenshotTo, name));
+            Png.Save(bmp, Path.Combine(ScreenshotTo, name));
         }
         catch (Exception ex) { Console.Error.WriteLine(name + ": " + ex.Message); }
     }

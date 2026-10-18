@@ -10,7 +10,7 @@ namespace NetMonitor;
 class Surface : Decorator
 {
     public Color Fill = Skin.Surface;
-    public Color? Accent;
+    public Color? Accent = null;
     public double Radius = 16;
 
     public Surface() { ClipToBounds = false; }

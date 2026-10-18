@@ -26,7 +26,7 @@ class AppWindow : Window
     {
         using var bmp = LogoView.Render(128);
         var ms = new MemoryStream();
-        bmp.Save(ms);
+        Png.Save(bmp, ms);
         ms.Position = 0;
         return new WindowIcon(ms);
     }
@@ -45,6 +45,15 @@ class AppWindow : Window
         foreach (var c in children) p.Children.Add(c);
         return p;
     }
+}
+
+// PNG speichern. Die neue Überladung mit BitmapEncoderOptions bringt hier keinen Vorteil.
+static class Png
+{
+#pragma warning disable CS0618
+    public static void Save(Bitmap bmp, string path) => bmp.Save(path);
+    public static void Save(Bitmap bmp, Stream stream) => bmp.Save(stream);
+#pragma warning restore CS0618
 }
 
 // Das Logo als eigenes Element (für Fenstersymbol und Icon-Export).
@@ -169,7 +178,7 @@ static class Exporter
                 using (var ctx = bmp.CreateDrawingContext())
                     ctx.FillRectangle(Skin.B(Skin.Bg), new Rect(image.Bounds.Size));
                 bmp.Render(image);
-                bmp.Save(png);
+                Png.Save(bmp, png);
                 msg += "\n" + Storage.Display(png);
             }
             await MessageDialog.Show(owner, L.P("Export gespeichert:\n\n", "Export saved:\n\n") + msg);
