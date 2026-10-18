@@ -1,6 +1,10 @@
 # Release output
 dist/
 
+# .NET build output (macOS/Linux version)
+bin/
+obj/
+
 # Local data when NETMONITOR_HOME points into the repository
 Verlauf/
 settings.txt

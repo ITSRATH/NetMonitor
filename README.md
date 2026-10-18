@@ -1,6 +1,6 @@
 # NetMonitor
 
-**Continuous ping, packet-loss and speed monitor for Windows** – watch your internet connection, your router and your game server side by side, find out *where* packet loss really happens and check whether you get the speed you pay for.
+**Continuous ping, packet-loss and speed monitor for Windows, Linux and macOS** – watch your internet connection, your router and your game server side by side, find out *where* packet loss really happens and check whether you get the speed you pay for.
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
@@ -14,6 +14,7 @@
 - ⚡ **Speed test** – Cloudflare, Speedtest.net or the official regulator test, compared with your **contracted plan**
 - 🔌 **LAN or Wi-Fi?** – connection type, Wi-Fi signal and LAN link speed at a glance
 - 🗂️ **History** of every scan, CSV export, English / German, dark UI – no administrator rights needed
+- 💻 **Windows, Linux and macOS** – same features and same data format on all three (macOS is experimental, see [below](#macos))
 
 ## Features
 
@@ -26,7 +27,7 @@
 
 ### Game server detection
 
-Select a running game and click **Detect** during a match. NetMonitor watches the game's network traffic for 12 s (Windows ETW, administrator rights once via UAC) and suggests the most likely game server – steady UDP traffic in both directions. If the server blocks ping, the last reachable router in front of it is measured instead. Read-only, no injection – safe with anti-cheat software.
+Select a running game and click **Detect** during a match. NetMonitor watches the game's network traffic for 10–12 s and suggests the most likely game server – steady UDP traffic in both directions. On Windows this uses ETW (administrator rights once via UAC), on Linux `ss` and on macOS `nettop` – both without root. If the server blocks ping, the last reachable router in front of it is measured instead. Read-only, no injection – safe with anti-cheat software.
 
 ### History & packet-loss analysis
 
@@ -52,7 +53,7 @@ Manual speed test with three providers:
 | Provider | How it works |
 |---|---|
 | **Cloudflare** | built in – 6 parallel connections, download / upload, ping, jitter and **latency under load** (bufferbloat) |
-| **Speedtest.net** | via the official [Ookla Speedtest CLI](https://www.speedtest.net/apps/cli), with server selection. The installer – or one click in the app – downloads it directly from Ookla, verifies its SHA-256 checksum and stores it in `%APPDATA%\NetMonitor\tools\ookla`. |
+| **Speedtest.net** | via the official [Ookla Speedtest CLI](https://www.speedtest.net/apps/cli), with server selection. The Windows installer – or one click in the app on every platform – downloads it directly from Ookla, verifies its SHA-256 checksum and stores it in the NetMonitor data folder (`tools/ookla`). An Ookla CLI already installed (e.g. via Homebrew or apt) is found automatically. |
 | **Official test** | the regulator's own measurement where one exists: 🇩🇪 Germany (Bundesnetzagentur – *Breitbandmessung*, legally binding), 🇦🇹 Austria (RTR-Netztest), 🇨🇭 Switzerland (networktest.ch), 🇱🇺 Luxembourg (checkmynet.lu). NetMonitor opens it; the result can be entered for comparison. For other countries Cloudflare or Speedtest.net are fully sufficient. |
 
 - **Contracted plan:** enter the speeds from your contract – gauges show a plan marker and *% of plan*, the history chart shows plan lines, and NetMonitor points out when results are repeatedly below 90 %.
@@ -70,6 +71,14 @@ Manual speed test with three providers:
 ![Session history](docs/screenshots/sessions.png)
 
 ## Installation
+
+| Platform | Download from [Releases](../../releases) |
+|---|---|
+| Windows 10 / 11 | `NetMonitor-<version>.zip` |
+| Linux (x64 / ARM64) | `NetMonitor-<version>-linux-x64.tar.gz` / `-linux-arm64.tar.gz` |
+| macOS 14+ (Apple Silicon / Intel) | `NetMonitor-<version>-macos-apple-silicon.dmg` / `-macos-intel.dmg` |
+
+### Windows
 
 1. Download `NetMonitor-<version>.zip` from the [Releases](../../releases) page.
 2. *Recommended:* right-click the ZIP → **Properties** → tick **Unblock** → OK.
@@ -89,11 +98,35 @@ The installer works **per user without administrator rights**:
 
 > **Why is there no `.exe`?** NetMonitor ships as source code that the built-in Windows PowerShell compiles at start-up (takes about 2 s). This way it also runs on PCs with **Smart App Control**, which blocks unsigned executables. Windows may still show *“Windows protected your PC”* for `Setup.cmd` from the internet – click **More info → Run anyway**, or unblock the ZIP first (step 2).
 
-### Requirements
+Requirements: Windows 10 or 11 (64-bit) with Windows PowerShell 5.1 and .NET Framework 4.x – both are part of Windows. Administrator rights only for the optional game server detection (one UAC prompt per detection).
 
-- Windows 10 or 11 (64-bit)
-- Windows PowerShell 5.1 and .NET Framework 4.x – both are part of Windows
-- Administrator rights only for the optional game server detection (one UAC prompt per detection)
+### Linux
+
+```bash
+tar xzf NetMonitor-<version>-linux-x64.tar.gz
+cd NetMonitor-<version>-linux-x64
+./install.sh
+```
+
+Installs for the current user without root: program in `~/.local/lib/netmonitor`, command `netmonitor`, and an entry in your application menu. Uninstall with `~/.local/lib/netmonitor/uninstall.sh` (add `--purge` to also delete your measurement data). To run without installing, just start `./NetMonitor`.
+
+- One self-contained file – no .NET installation needed. Requires an X11 or XWayland desktop (`libX11`, `libICE`, `libSM`, `fontconfig` – present on all common desktop distributions; `install.sh` tells you if something is missing).
+- Ping works **without root** (falls back to the system `ping` if unprivileged ICMP sockets are disabled).
+- Wi-Fi name and signal are read via `nmcli` (NetworkManager) or `iw`.
+- Tested on Ubuntu 24.04.
+
+### macOS
+
+> ⚠️ **Experimental:** the macOS version is built automatically but has **not been tested on a real Mac yet**. Feedback via issues is very welcome.
+
+1. Open the `.dmg` (Apple Silicon or Intel) and drag **NetMonitor** to **Applications**.
+2. The app is not notarized by Apple, so macOS blocks the first start. Open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. Alternatively, in Terminal:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/NetMonitor.app
+```
+
+Requires macOS 14 (Sonoma) or newer. No administrator rights needed; Wi-Fi details come from `system_profiler` (recent macOS versions may hide the network name).
 
 ## Usage
 
@@ -116,7 +149,13 @@ The installer works **per user without administrator rights**:
 
 ## Data & privacy
 
-All data stays on your PC in `%APPDATA%\NetMonitor`:
+All data stays on your computer:
+
+| Windows | Linux | macOS |
+|---|---|---|
+| `%APPDATA%\NetMonitor` | `~/.local/share/NetMonitor` | `~/Library/Application Support/NetMonitor` |
+
+The file formats are identical on all platforms, so you can copy your history from one system to another.
 
 | | |
 |---|---|
@@ -135,6 +174,15 @@ powershell -ExecutionPolicy Bypass -File build\Build-Release.ps1
 
 Compiles all sources as a check and creates `dist\NetMonitor-<version>.zip`. The version is defined in `src/Core.cs` (`Program.Version`).
 
+The Linux and macOS version lives in `cross/` (.NET 10 + [Avalonia](https://avaloniaui.net/)); its version is set in `cross/NetMonitor.Cross.csproj`:
+
+```bash
+cross/build/build-linux.sh linux-x64      # → dist/NetMonitor-<version>-linux-x64.tar.gz
+cross/build/build-macos.sh osx-arm64      # → dist/NetMonitor-<version>-macos-apple-silicon.dmg (on a Mac)
+```
+
+**GitHub Actions** (`.github/workflows/release.yml`) builds all packages for Windows, Linux and macOS. Run it manually under *Actions → Release* to get the packages as artifacts, or push a tag such as `v1.3.0` to publish them as a GitHub release.
+
 ## Project structure
 
 ```
@@ -148,9 +196,18 @@ src\HistoryForm.cs    history, packet-loss analysis, dialogs
 src\SpeedTest.cs      speed test (Cloudflare, Ookla CLI, official tests) and plan comparison
 src\Setup.cs          installer / uninstaller
 src\Strings.cs        German / English
-build\                release script
+build\                release script (Windows)
 docs\screenshots\     screenshots for this README
+
+cross/                Linux & macOS version (.NET 10, Avalonia)
+  Core/               data, storage, loss analysis, network tools, speed tests
+  UI/                 theme, controls, charts, windows and dialogs
+  packaging/          icons, Linux install scripts, macOS Info.plist
+  build/              build-linux.sh, build-macos.sh
+.github/workflows/    release build for all platforms
 ```
+
+The Linux/macOS app also has two helper options: `--screenshot <folder>` renders all windows to PNG files, `--export-icons <folder>` writes the app icon in all sizes.
 
 ## License
 
@@ -167,7 +224,8 @@ The Ookla Speedtest CLI is proprietary software by Ookla. It is **not** part of 
 **Funktionen**
 - Live-Dashboard mit Sparklines, Paketleiste und Verfügbarkeitsring
 - Verlauf aller Messungen mit Paketverlust-Analyse: Tagesübersicht, Ursachen-Einschätzung, Serien-Zusammenfassung
-- Automatische Spielserver-Erkennung (einmalig Adminrechte, Anti-Cheat-unbedenklich)
+- Automatische Spielserver-Erkennung (Windows: einmalig Adminrechte; Linux/macOS: ohne Root; Anti-Cheat-unbedenklich)
+- Läuft auf **Windows, Linux und macOS**
 - Speedtest per **Cloudflare**, **Speedtest.net** (Ookla CLI, wird auf Wunsch automatisch geladen) oder **offizieller Messung** (Breitbandmessung der Bundesnetzagentur, RTR-Netztest, networktest.ch, checkmynet.lu)
 - Vergleich mit deinem **gebuchten Tarif**, unplausible Messungen werden erkannt und markiert
 - Anzeige **LAN oder WLAN** inkl. Signalstärke – offizielle Messungen bitte per LAN-Kabel
@@ -175,4 +233,6 @@ The Ookla Speedtest CLI is proprietary software by Ookla. It is **not** part of 
 
 **Installation:** ZIP von der Releases-Seite laden → (empfohlen) Rechtsklick → Eigenschaften → „Zulassen“ → entpacken → **`Setup.cmd`** doppelklicken. Installiert wird ohne Adminrechte für dein Benutzerkonto, inklusive Startmenü-Eintrag, optionalem Download der Ookla CLI und Deinstallation über *Einstellungen → Apps*. Erscheint „Der Computer wurde durch Windows geschützt“: **Weitere Informationen → Trotzdem ausführen**. Ein Update funktioniert genauso – Verlauf und Einstellungen bleiben erhalten.
 
-Die Messdaten liegen unter `%APPDATA%\NetMonitor`.
+**Linux:** `.tar.gz` entpacken und `./install.sh` ausführen – ohne Root, mit Eintrag im Anwendungsmenü. **macOS (experimentell, noch nicht auf einem echten Mac getestet):** `.dmg` öffnen, NetMonitor in „Programme“ ziehen, beim ersten Start unter *Systemeinstellungen → Datenschutz & Sicherheit* auf **Trotzdem öffnen** klicken.
+
+Die Messdaten liegen unter `%APPDATA%\NetMonitor` (Windows), `~/.local/share/NetMonitor` (Linux) bzw. `~/Library/Application Support/NetMonitor` (macOS) – im gleichen Format, also zwischen den Systemen austauschbar.

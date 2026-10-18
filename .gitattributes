@@ -1,0 +1,4 @@
+# Shell-Skripte und macOS-Dateien immer mit LF, sonst laufen sie unter Linux/macOS nicht
+*.sh    text eol=lf
+*.plist text eol=lf
+*.png   binary
